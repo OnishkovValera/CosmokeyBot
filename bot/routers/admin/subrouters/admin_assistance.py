@@ -35,6 +35,7 @@ admin_assistance_router = Router()
 
 PAGE_SIZE = 10
 
+
 # ------------------------------------------------------------
 # 1. Вход в раздел "Обращения"
 # ------------------------------------------------------------
@@ -100,7 +101,7 @@ async def choose_status(message: Message, state: FSMContext, bot: Bot):
     status = status_map[message.text]
     await state.update_data(assistance_status=status)
     await state.set_state(AdminStates.viewing_assistance_list)
-    await state.update_data(assistance_offset=0)   # сбрасываем offset
+    await state.update_data(assistance_offset=0)  # сбрасываем offset
     await show_requests_list(message, state, bot)
 
 
@@ -166,10 +167,19 @@ async def show_requests_list(message: Message, state: FSMContext, bot: Bot):
     list_message_ids = []
     for req in requests:
         created_date = req['created_at'].strftime('%d.%m.%Y %H:%M') if req.get('created_at') else 'неизвестно'
+
         if request_type == "reward":
-            link = req.get('link', 'нет ссылки')[:50]
+            link = req.get('link')
+            if link:
+                link_display = link[:50] + ('...' if len(link) > 50 else '')
+            else:
+                link_display = 'нет ссылки'
+
             text_preview = (req.get('text') or 'нет текста')[:100]
-            text_line = f"🔗 {link}…\n📝 {text_preview}…"
+            if len(text_preview) == 100:
+                text_preview += '...'
+
+            text_line = f"🔗 {link_display}\n📝 {text_preview}"
         else:
             text_preview = (req.get('text') or 'нет текста')[:100]
             if len(text_preview) == 100:
@@ -182,6 +192,7 @@ async def show_requests_list(message: Message, state: FSMContext, bot: Bot):
             f"📌 {req['request_type'] if request_type == 'assistance' else '💰 Выплата'}\n"
             f"{text_line}"
         )
+
         kb = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(
                 text="✅ Обработать",
@@ -579,6 +590,7 @@ async def back_to_list_callback(callback: CallbackQuery, state: FSMContext, bot:
 
     await callback.answer()
 
+
 @admin_assistance_router.message(
     AdminStates.choosing_mode,
     F.text == BTN_ADMIN_SEARCH_REWARD
@@ -589,6 +601,7 @@ async def start_search_reward(message: Message, state: FSMContext):
         "💰 Введите ID выплаты (число):",
         reply_markup=get_cancel_keyboard()
     )
+
 
 @admin_assistance_router.message(AdminStates.searching_reward)
 async def process_search_reward_id(message: Message, state: FSMContext, bot: Bot):
