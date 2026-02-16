@@ -52,10 +52,12 @@ async def subscribed_callback(callback: CallbackQuery, state: FSMContext):
             reply_markup=add_back_button(check_subscription_kb())
         )
 
+
 @gift_router.callback_query(F.data == "not_subscribed")
 async def not_subscribed_callback(callback: CallbackQuery, state: FSMContext):
     await push_state(state, GiftSteps.CHANNEL_LINK)
-    await callback.message.edit_text(settings.TELEGRAM_CHANEL_LINK, reply_markup=add_back_button(check_subscription_kb()))
+    await callback.message.edit_text(settings.TELEGRAM_CHANEL_LINK,
+                                     reply_markup=add_back_button(check_subscription_kb()))
 
 
 @gift_router.callback_query(F.data == "gift_check_subscription")
@@ -99,10 +101,13 @@ async def universal_back(callback: CallbackQuery, state: FSMContext):
         previous_step = await pop_state(state)
         if previous_step == GiftSteps.CHANNEL_LINK:
             await push_state(state, GiftSteps.CHANNEL_LINK)
-            await callback.message.edit_text("t.me/your_channel_link", reply_markup=add_back_button(check_subscription_kb()))
+            await callback.message.edit_text(settings.TELEGRAM_CHANEL_LINK,
+                                             reply_markup=add_back_button(check_subscription_kb()))
         elif previous_step == GiftSteps.CHECK_SUBSCRIPTION:
-            await callback.message.edit_text(messages_text["subscription_check"], reply_markup=add_back_button(get_subscribe_for_gift_kb()))
+            await callback.message.edit_text(messages_text["subscription_check"],
+                                             reply_markup=add_back_button(get_subscribe_for_gift_kb()))
         else:
-            logger.log("WARNING", f"User {callback.from_user.first_name} push back button but previous step is {previous_step}, expected {GiftSteps.CHANNEL_LINK} or {GiftSteps.CHECK_SUBSCRIPTION}")
+            logger.log("WARNING",
+                       f"User {callback.from_user.first_name} push back button but previous step is {previous_step}, expected {GiftSteps.CHANNEL_LINK} or {GiftSteps.CHECK_SUBSCRIPTION}")
             logger.log("INFO", f" previous state {previous_step}")
     await callback.answer()
