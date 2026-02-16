@@ -3,6 +3,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message, ReplyKeyboardRemove
 from loguru import logger
 
+from bot.config import settings
 from bot.db.messages_text import messages_text
 from bot.keyboards.customer.gift_kb import get_subscribe_for_gift_kb, check_subscription_kb
 from bot.keyboards.customer.main_menu_kb import main_menu
@@ -54,7 +55,7 @@ async def subscribed_callback(callback: CallbackQuery, state: FSMContext):
 @gift_router.callback_query(F.data == "not_subscribed")
 async def not_subscribed_callback(callback: CallbackQuery, state: FSMContext):
     await push_state(state, GiftSteps.CHANNEL_LINK)
-    await callback.message.edit_text("t.me/your_channel_link", reply_markup=add_back_button(check_subscription_kb()))
+    await callback.message.edit_text(settings.TELEGRAM_CHANEL_LINK, reply_markup=add_back_button(check_subscription_kb()))
 
 
 @gift_router.callback_query(F.data == "gift_check_subscription")

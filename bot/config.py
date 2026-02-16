@@ -18,6 +18,7 @@ class Settings(BaseSettings):
     ADMIN_ACCOUNT_ID: int
     ADMIN_ACCOUNT_USERNAME : str
     ADMIN_GROUP_ID: int
+    TELEGRAM_CHANEL_LINK: str
 
     class Config:
         env_file = ".env"
