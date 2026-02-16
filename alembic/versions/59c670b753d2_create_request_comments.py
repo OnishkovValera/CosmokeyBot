@@ -1,10 +1,3 @@
-"""create request comments
-
-Revision ID: 59c670b753d2
-Revises: 846e2ca933c9
-Create Date: 2026-02-13 08:20:27.225260
-
-"""
 from typing import Sequence, Union
 
 from alembic import op

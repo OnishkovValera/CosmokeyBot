@@ -1,10 +1,3 @@
-"""add admin_comment columt to rewards
-
-Revision ID: c9ee6616fdfb
-Revises: 69fe47c229e2
-Create Date: 2026-02-13 10:55:39.170828
-
-"""
 from typing import Sequence, Union
 
 from alembic import op

@@ -1,52 +1,12 @@
 from typing import List, Optional
 
-from sqlalchemy import select, update, and_, desc, insert
+from sqlalchemy import select, update, and_, desc, insert, func
 
 from bot.db.engine import db
 from bot.db.tables import (
     assistance_requests, rewards, users,
     media_messages, request_comments
 )
-
-
-# ------------------- ПОЛУЧЕНИЕ СПИСКА ЗАЯВОК -------------------
-async def get_requests_by_filters(
-        request_type: str,  # 'assistance' или 'reward'
-        subtype: Optional[str] = None,  # для assistance: defect/complaint/feedback
-        status: Optional[str] = None,
-        limit: int = 20,
-        offset: int = 0
-) -> List[dict]:
-    """Возвращает заявки с информацией о пользователе и текстом."""
-    async with db.session_factory() as session:
-        if request_type == 'assistance':
-            table = assistance_requests
-            type_filter = assistance_requests.c.request_type == subtype if subtype else True
-        else:
-            table = rewards
-            type_filter = True
-
-        query = (
-            select(
-                table,
-                users.c.username.label('user_username'),
-                users.c.telegram_id.label('user_telegram_id'),
-                users.c.chat_id.label('user_chat_id')
-            )
-            .join(users, table.c.user_id == users.c.id)
-            .where(
-                and_(
-                    type_filter,
-                    table.c.status == status if status else True
-                )
-            )
-            .order_by(desc(table.c.created_at))
-            .limit(limit)
-            .offset(offset)
-        )
-        result = await session.execute(query)
-        rows = result.mappings().all()
-        return [dict(row) for row in rows]
 
 
 # ------------------- ПОИСК ПО ID -------------------
@@ -164,3 +124,80 @@ async def add_comment(request_type: str, request_id: int, admin_id: int, comment
                     comment=comment
                 )
             )
+
+
+# ------------------- ПОЛУЧЕНИЕ СПИСКА ЗАЯВОК -------------------
+async def get_requests_by_filters(
+        request_type: str,
+        subtype: Optional[str] = None,
+        status: Optional[str] = None,
+        limit: int = 20,
+        offset: int = 0
+) -> List[dict]:
+    async with db.session_factory() as session:
+        if request_type == 'assistance':
+            table = assistance_requests
+            type_filter = assistance_requests.c.request_type == subtype if subtype else True
+        else:
+            table = rewards
+            type_filter = True
+
+        # Формируем условия
+        conditions = [type_filter]
+        if status:
+            conditions.append(table.c.status == status)
+
+        query = (
+            select(
+                table,
+                users.c.username.label('user_username'),
+                users.c.telegram_id.label('user_telegram_id'),
+                users.c.chat_id.label('user_chat_id')
+            )
+            .join(users, table.c.user_id == users.c.id)
+            .where(and_(*conditions))
+            .order_by(desc(table.c.created_at))
+            .limit(limit)
+            .offset(offset)
+        )
+        result = await session.execute(query)
+        rows = result.mappings().all()
+        return [dict(row) for row in rows]
+
+
+# ------------------- ПОЛУЧЕНИЕ ОБЩЕГО КОЛИЧЕСТВА -------------------
+async def get_total_requests_count(
+        request_type: str,
+        subtype: Optional[str] = None,
+        status: Optional[str] = None
+) -> int:
+    async with db.session_factory() as session:
+        if request_type == 'assistance':
+            table = assistance_requests
+            type_filter = assistance_requests.c.request_type == subtype if subtype else True
+        else:
+            table = rewards
+            type_filter = True
+
+        conditions = [type_filter]
+        if status:
+            conditions.append(table.c.status == status)
+
+        query = select(func.count(table.c.id)).where(and_(*conditions))
+        result = await session.execute(query)
+        return result.scalar_one()
+
+async def get_reward_by_id(reward_id: int) -> Optional[dict]:
+    """Ищет заявку на выплату только в таблице rewards."""
+    async with db.session_factory() as session:
+        res = await session.execute(
+            select(rewards, users.c.username, users.c.telegram_id, users.c.chat_id, users.c.phone_number)
+            .join(users, rewards.c.user_id == users.c.id)
+            .where(rewards.c.id == reward_id)
+        )
+        row = res.mappings().first()
+        if row:
+            data = dict(row)
+            data['request_type'] = 'reward'
+            return data
+        return None

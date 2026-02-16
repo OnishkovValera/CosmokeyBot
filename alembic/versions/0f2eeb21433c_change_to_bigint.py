@@ -1,10 +1,3 @@
-"""change to bigint
-
-Revision ID: 0f2eeb21433c
-Revises: c1835db5eb26
-Create Date: 2026-02-13 09:56:17.982228
-
-"""
 from typing import Sequence, Union
 
 from alembic import op

@@ -1,4 +1,3 @@
-"""create bot tables: users, assistance_requests, messages_texts, rewards"""
 
 from alembic import op
 import sqlalchemy as sa

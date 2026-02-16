@@ -1,10 +1,3 @@
-"""alter rewards link nullable
-
-Revision ID: 6c302b56ee65
-Revises: 992b17639564
-Create Date: 2026-02-13 04:58:18.990874
-
-"""
 from typing import Sequence, Union
 
 from alembic import op

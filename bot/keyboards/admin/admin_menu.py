@@ -12,14 +12,15 @@ BTN_ADMIN_DONE = "🚫 Закончить"
 BTN_ADMIN_STATS = "📊 Статистика"
 BTN_ADMIN_SET_INFO_POST = "📦 Установить инфо-пост"
 BTN_ADMIN_USERS = "👥 Список пользователей"
+BTN_ADMIN_SEARCH_REWARD = "💰 Поиск выплаты по ID"
 
 def get_admin_main_keyboard() -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup(
         keyboard=[
             [KeyboardButton(text=BTN_ADMIN_ASSISTANCE)],
-            [KeyboardButton(text=BTN_ADMIN_REWARDS)],
             [KeyboardButton(text=BTN_ADMIN_EDIT_TEXTS)],
             [KeyboardButton(text=BTN_ADMIN_SEARCH_REQUEST)],
+            [KeyboardButton(text=BTN_ADMIN_SEARCH_REWARD)],  # новый
             [KeyboardButton(text=BTN_ADMIN_STATS)],
             [KeyboardButton(text=BTN_ADMIN_SET_INFO_POST)],
             [KeyboardButton(text=BTN_ADMIN_USERS)],
@@ -28,7 +29,6 @@ def get_admin_main_keyboard() -> ReplyKeyboardMarkup:
         resize_keyboard=True,
         one_time_keyboard=False
     )
-
 
 def get_admin_mode_keyboard() -> ReplyKeyboardMarkup:
     """Синоним для главной клавиатуры (для обратной совместимости)."""
@@ -64,23 +64,27 @@ def get_cancel_keyboard() -> ReplyKeyboardMarkup:
 BTN_ASSISTANCE_DEFECT = "🔧 Дефект"
 BTN_ASSISTANCE_COMPLAINT = "⚠️ Жалоба"
 BTN_ASSISTANCE_FEEDBACK = "📝 Отзыв"
+# Добавьте новую константу
+BTN_ASSISTANCE_REWARDS = "💰 Выплаты за отзывы"
 
+# Обновите клавиатуру выбора типа
 def get_assistance_type_keyboard() -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup(
         keyboard=[
             [KeyboardButton(text=BTN_ASSISTANCE_DEFECT)],
             [KeyboardButton(text=BTN_ASSISTANCE_COMPLAINT)],
             [KeyboardButton(text=BTN_ASSISTANCE_FEEDBACK)],
+            [KeyboardButton(text=BTN_ASSISTANCE_REWARDS)],   # ← новая кнопка
             [KeyboardButton(text=BTN_BACK)],
         ],
         resize_keyboard=True,
         one_time_keyboard=False
     )
-
 # ----- Выбор статуса заявок -----
 BTN_STATUS_NEW = "🟢 Новые"
 BTN_STATUS_IN_PROGRESS = "🟡 В работе"
 BTN_STATUS_COMPLETED = "🔴 Закрытые"
+BTN_STATUS_REJECTED = "❌ Отклонено"
 
 def get_status_choice_keyboard() -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup(
@@ -88,6 +92,7 @@ def get_status_choice_keyboard() -> ReplyKeyboardMarkup:
             [KeyboardButton(text=BTN_STATUS_NEW)],
             [KeyboardButton(text=BTN_STATUS_IN_PROGRESS)],
             [KeyboardButton(text=BTN_STATUS_COMPLETED)],
+            [KeyboardButton(text=BTN_STATUS_REJECTED)],   # новая кнопка
             [KeyboardButton(text=BTN_BACK)],
         ],
         resize_keyboard=True,

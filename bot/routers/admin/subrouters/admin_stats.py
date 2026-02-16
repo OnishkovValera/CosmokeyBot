@@ -29,17 +29,23 @@ async def show_stats(message: Message, state: FSMContext):
     gifts_count = await stats_service.get_gifts_count()
     assistance_stats = await stats_service.get_assistance_stats()
     rewards_stats = await stats_service.get_rewards_stats()
+    total_requests = await stats_service.get_total_requests()
 
-    # Формируем текст
+    # Формируем текст (без информации о подписчиках)
     text = (
         "📊 **Общая статистика бота**\n\n"
         f"👥 **Пользователи:** {users_count}\n"
-        f"🎁 **Выдано подарков:** {gifts_count}\n\n"
+        f"  • Получили подарок:   {gifts_count}\n\n"
 
         "📩 **Обращения по типам:**\n"
-        f"  🔧 Дефект: {assistance_stats['by_type'].get('defect', 0)}\n"
-        f"  ⚠️ Жалоба: {assistance_stats['by_type'].get('complaint', 0)}\n"
-        f"  📝 Отзыв:  {assistance_stats['by_type'].get('feedback', 0)}\n\n"
+        f"  🔧 Дефект:   {assistance_stats['by_type'].get('defect', 0)}\n"
+        f"  ⚠️ Жалоба:   {assistance_stats['by_type'].get('complaint', 0)}\n"
+        f"  📝 Отзыв:    {assistance_stats['by_type'].get('feedback', 0)}\n\n"
+
+        "💰 **Выплаты за отзывы:**\n"
+        f"  Всего заявок: {rewards_stats['total']}\n"
+        f"  Выплачено:    {rewards_stats['paid']}\n"
+        f"  Ожидает:      {rewards_stats['pending']}\n\n"
 
         "🔄 **Обращения по статусам:**\n"
         f"  🟢 Новые:       {assistance_stats['by_status'].get('new', 0)}\n"
@@ -47,16 +53,19 @@ async def show_stats(message: Message, state: FSMContext):
         f"  ✅ Завершено:   {assistance_stats['by_status'].get('completed', 0)}\n"
         f"  ❌ Отклонено:   {assistance_stats['by_status'].get('rejected', 0)}\n\n"
 
-        "💰 **Выплаты за отзывы:**\n"
-        f"  Всего заявок: {rewards_stats['total']}\n"
-        f"  Выплачено:    {rewards_stats['paid']}\n"
-        f"  Ожидает:      {rewards_stats['pending']}\n"
+        "🔄 **Выплаты по статусам:**\n"
+        f"  🟢 Новые:       {rewards_stats['by_status'].get('new', 0)}\n"
+        f"  🟡 В работе:    {rewards_stats['by_status'].get('in_progress', 0)}\n"
+        f"  ✅ Выплачено:   {rewards_stats['by_status'].get('completed', 0)}\n"
+        f"  ❌ Отклонено:   {rewards_stats['by_status'].get('rejected', 0)}\n\n"
+
+        f"📌 **Всего заявок (обращения + выплаты):** {total_requests}"
     )
 
     await message.answer(
         text,
         parse_mode="Markdown",
-        reply_markup=get_back_keyboard()  # кнопка «Назад» в главное меню
+        reply_markup=get_back_keyboard()
     )
 
 

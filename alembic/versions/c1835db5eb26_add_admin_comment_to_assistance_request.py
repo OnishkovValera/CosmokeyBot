@@ -1,10 +1,3 @@
-"""add admin_comment to assistance request
-
-Revision ID: c1835db5eb26
-Revises: a8a0217e38d1
-Create Date: 2026-02-13 09:32:54.849647
-
-"""
 from typing import Sequence, Union
 
 from alembic import op

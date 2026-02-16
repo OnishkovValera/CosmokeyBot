@@ -1,10 +1,3 @@
-"""add status to assistance requests
-
-Revision ID: 846e2ca933c9
-Revises: 5a63607a8ecf
-Create Date: 2026-02-13 08:19:19.915480
-
-"""
 from typing import Sequence, Union
 
 from alembic import op

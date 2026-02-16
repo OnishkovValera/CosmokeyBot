@@ -25,3 +25,6 @@ class AdminStates(StatesGroup):
     mailing_text = State()
     mailing_confirm = State()
     viewing_users_list = State()
+    choosing_rewards_status = State()
+    mailing_content = State()
+    searching_reward = State()

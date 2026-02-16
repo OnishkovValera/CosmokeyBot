@@ -3,8 +3,10 @@ from aiogram.filters import StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 from loguru import logger
+from sqlalchemy import select
 
 from bot.db.engine import db
+from bot.db.tables import users
 from bot.fsm.states.admin import AdminStates
 from bot.keyboards.admin.admin_menu import (
     get_assistance_type_keyboard,
@@ -21,14 +23,17 @@ from bot.keyboards.admin.admin_menu import (
     BTN_ASSISTANCE_DEFECT,
     BTN_ASSISTANCE_COMPLAINT,
     BTN_ASSISTANCE_FEEDBACK,
+    BTN_ASSISTANCE_REWARDS,
     BTN_STATUS_NEW,
     BTN_STATUS_IN_PROGRESS,
     BTN_STATUS_COMPLETED,
+    BTN_STATUS_REJECTED, BTN_ADMIN_SEARCH_REWARD,  # новая кнопка
 )
 from bot.services.admin import requests_service
 
 admin_assistance_router = Router()
 
+PAGE_SIZE = 10
 
 # ------------------------------------------------------------
 # 1. Вход в раздел "Обращения"
@@ -50,13 +55,15 @@ async def enter_assistance_section(message: Message, state: FSMContext):
 # ------------------------------------------------------------
 @admin_assistance_router.message(
     AdminStates.choosing_assistance_type,
-    F.text.in_([BTN_ASSISTANCE_DEFECT, BTN_ASSISTANCE_COMPLAINT, BTN_ASSISTANCE_FEEDBACK])
+    F.text.in_([BTN_ASSISTANCE_DEFECT, BTN_ASSISTANCE_COMPLAINT,
+                BTN_ASSISTANCE_FEEDBACK, BTN_ASSISTANCE_REWARDS])
 )
 async def choose_assistance_type(message: Message, state: FSMContext):
     type_map = {
         BTN_ASSISTANCE_DEFECT: "defect",
         BTN_ASSISTANCE_COMPLAINT: "complaint",
-        BTN_ASSISTANCE_FEEDBACK: "feedback"
+        BTN_ASSISTANCE_FEEDBACK: "feedback",
+        BTN_ASSISTANCE_REWARDS: "reward"
     }
     subtype = type_map[message.text]
     await state.update_data(assistance_subtype=subtype)
@@ -79,22 +86,21 @@ async def back_to_admin_menu(message: Message, state: FSMContext):
     )
 
 
-# ------------------------------------------------------------
-# 3. Выбор статуса -> показ списка заявок (20 шт)
-# ------------------------------------------------------------
 @admin_assistance_router.message(
     AdminStates.choosing_assistance_status,
-    F.text.in_([BTN_STATUS_NEW, BTN_STATUS_IN_PROGRESS, BTN_STATUS_COMPLETED])
+    F.text.in_([BTN_STATUS_NEW, BTN_STATUS_IN_PROGRESS, BTN_STATUS_COMPLETED, BTN_STATUS_REJECTED])
 )
 async def choose_status(message: Message, state: FSMContext, bot: Bot):
     status_map = {
         BTN_STATUS_NEW: "new",
         BTN_STATUS_IN_PROGRESS: "in_progress",
-        BTN_STATUS_COMPLETED: "completed"
+        BTN_STATUS_COMPLETED: "completed",
+        BTN_STATUS_REJECTED: "rejected",
     }
     status = status_map[message.text]
     await state.update_data(assistance_status=status)
     await state.set_state(AdminStates.viewing_assistance_list)
+    await state.update_data(assistance_offset=0)   # сбрасываем offset
     await show_requests_list(message, state, bot)
 
 
@@ -111,17 +117,34 @@ async def back_to_type_choice(message: Message, state: FSMContext):
 
 
 async def show_requests_list(message: Message, state: FSMContext, bot: Bot):
-    """Отображает до 20 заявок с inline-кнопкой «Обработать»."""
+    """Отображает страницу заявок с пагинацией (20 шт)."""
     data = await state.get_data()
     subtype = data.get("assistance_subtype")
     status = data.get("assistance_status")
+    offset = data.get("assistance_offset", 0)
+    limit = PAGE_SIZE
 
+    if subtype == "reward":
+        request_type = "reward"
+        subtype_filter = None
+    else:
+        request_type = "assistance"
+        subtype_filter = subtype
+
+    # Получаем заявки
     requests = await requests_service.get_requests_by_filters(
-        request_type="assistance",
-        subtype=subtype,
+        request_type=request_type,
+        subtype=subtype_filter,
         status=status,
-        limit=20,
-        offset=0
+        limit=limit,
+        offset=offset
+    )
+
+    # Получаем общее количество (для пагинации)
+    total = await requests_service.get_total_requests_count(
+        request_type=request_type,
+        subtype=subtype_filter,
+        status=status
     )
 
     if not requests:
@@ -142,41 +165,108 @@ async def show_requests_list(message: Message, state: FSMContext, bot: Bot):
 
     list_message_ids = []
     for req in requests:
-        # Безопасное форматирование даты
         created_date = req['created_at'].strftime('%d.%m.%Y %H:%M') if req.get('created_at') else 'неизвестно'
-        text_preview = (req.get('text') or 'нет текста')[:100]
-        if len(text_preview) == 100:
-            text_preview += '...'
+        if request_type == "reward":
+            link = req.get('link', 'нет ссылки')[:50]
+            text_preview = (req.get('text') or 'нет текста')[:100]
+            text_line = f"🔗 {link}…\n📝 {text_preview}…"
+        else:
+            text_preview = (req.get('text') or 'нет текста')[:100]
+            if len(text_preview) == 100:
+                text_preview += '...'
+            text_line = f"📝 {text_preview}"
+
         text = (
             f"🆔 #{req['id']} | @{req['user_username']}\n"
             f"📅 {created_date}\n"
-            f"📌 {req['request_type']}\n"
-            f"📝 {text_preview}"
+            f"📌 {req['request_type'] if request_type == 'assistance' else '💰 Выплата'}\n"
+            f"{text_line}"
         )
         kb = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(
                 text="✅ Обработать",
-                callback_data=f"process_request:assistance:{req['id']}"
+                callback_data=f"process_request:{request_type}:{req['id']}"
             )]
         ])
         sent = await message.answer(text, reply_markup=kb)
         list_message_ids.append(sent.message_id)
 
-    # Сообщение с кнопкой "Назад"
-    back_msg = await message.answer(
-        "⬆️ Список заявок",
-        reply_markup=get_back_keyboard()
-    )
-    list_message_ids.append(back_msg.message_id)
+    # Клавиатура пагинации (inline)
+    pagination_kb = []
+    nav_buttons = []
+    if offset > 0:
+        nav_buttons.append(InlineKeyboardButton(text="◀️ Назад", callback_data="assistance_prev"))
+    if offset + limit < total:
+        nav_buttons.append(InlineKeyboardButton(text="Вперёд ▶️", callback_data="assistance_next"))
+    if nav_buttons:
+        pagination_kb.append(nav_buttons)
 
-    # ✅ Сохраняем ТОЛЬКО ID сообщений (БЕЗ requests)
+    # Если есть пагинация – показываем inline-клавиатуру, иначе – обычную кнопку "Назад"
+    if pagination_kb:
+        pagination_msg = await message.answer(
+            "⬆️ Список заявок",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=pagination_kb)
+        )
+        list_message_ids.append(pagination_msg.message_id)
+    else:
+        back_msg = await message.answer(
+            "⬆️ Список заявок",
+            reply_markup=get_back_keyboard()
+        )
+        list_message_ids.append(back_msg.message_id)
+
     await state.update_data(
-        list_message_ids=list_message_ids
+        list_message_ids=list_message_ids,
+        assistance_offset=offset,
+        assistance_total=total
     )
 
 
 # ------------------------------------------------------------
-# 4. Нажатие «Обработать» -> удаляем список, показываем детали
+# 4. Пагинация: вперёд / назад
+# ------------------------------------------------------------
+@admin_assistance_router.callback_query(
+    StateFilter(AdminStates.viewing_assistance_list),
+    F.data.in_(["assistance_next", "assistance_prev"])
+)
+async def paginate_assistance(callback: CallbackQuery, state: FSMContext, bot: Bot):
+    data = await state.get_data()
+    offset = data.get("assistance_offset", 0)
+    limit = PAGE_SIZE
+
+    if callback.data == "assistance_next":
+        offset += limit
+    elif callback.data == "assistance_prev":
+        offset = max(0, offset - limit)
+
+    await state.update_data(assistance_offset=offset)
+    await callback.answer()
+    await show_requests_list(callback.message, state, bot)
+
+
+# ------------------------------------------------------------
+# 5. Кнопка «Назад» в списке -> возврат к выбору статуса
+# ------------------------------------------------------------
+@admin_assistance_router.message(
+    StateFilter(AdminStates.viewing_assistance_list),
+    F.text == BTN_BACK
+)
+async def back_from_list(message: Message, state: FSMContext, bot: Bot):
+    data = await state.get_data()
+    for msg_id in data.get("list_message_ids", []):
+        try:
+            await bot.delete_message(message.chat.id, msg_id)
+        except:
+            pass
+    await state.set_state(AdminStates.choosing_assistance_status)
+    await message.answer(
+        "Выберите статус заявок:",
+        reply_markup=get_status_choice_keyboard()
+    )
+
+
+# ------------------------------------------------------------
+# 6. Нажатие «Обработать» -> удаляем список, показываем детали
 # ------------------------------------------------------------
 @admin_assistance_router.callback_query(
     StateFilter(AdminStates.viewing_assistance_list),
@@ -205,6 +295,7 @@ async def show_request_detail(
         request_id: int,
         bot: Bot = None
 ):
+    """Отображает детальную информацию по заявке + пересылает медиа."""
     if isinstance(target, CallbackQuery):
         message = target.message
         bot = target.bot
@@ -220,7 +311,6 @@ async def show_request_detail(
             await bot.delete_message(message.chat.id, msg_id)
         except Exception as e:
             logger.warning(f"Не удалось удалить старое детальное сообщение {msg_id}: {e}")
-    # Очищаем старые ID перед созданием новых
     await state.update_data(detail_message_ids=[])
     # ------------------------------------------------------------
 
@@ -236,7 +326,7 @@ async def show_request_detail(
     text = f"🆔 Заявка #{detail['id']}\n👤 Пользователь: {user_link}\n📱 Телефон: {detail.get('phone_number', 'не указан')}\n📅 Создано: {created_date}\n🔄 Статус: **{detail['status']}**\n\n"
     if request_type == 'assistance':
         text += f"📝 Текст обращения:\n{detail.get('text', 'нет текста')}\n"
-    else:
+    else:  # reward
         text += f"🔗 Ссылка на отзыв: {detail.get('link', 'нет ссылки')}\n"
         if detail.get('text'):
             text += f"📝 Текст отзыва:\n{detail['text']}\n"
@@ -298,27 +388,6 @@ async def show_request_detail(
 
 
 # ------------------------------------------------------------
-# 5. Кнопка «Назад» в списке -> возврат к выбору статуса
-# ------------------------------------------------------------
-@admin_assistance_router.message(
-    StateFilter(AdminStates.viewing_assistance_list),
-    F.text == BTN_BACK
-)
-async def back_from_list(message: Message, state: FSMContext, bot: Bot):
-    data = await state.get_data()
-    for msg_id in data.get("list_message_ids", []):
-        try:
-            await bot.delete_message(message.chat.id, msg_id)
-        except:
-            pass
-    await state.set_state(AdminStates.choosing_assistance_status)
-    await message.answer(
-        "Выберите статус заявок:",
-        reply_markup=get_status_choice_keyboard()
-    )
-
-
-# ------------------------------------------------------------
 # 6. Кнопка «Назад» в детальном просмотре -> возврат к списку
 # ------------------------------------------------------------
 @admin_assistance_router.message(
@@ -329,21 +398,16 @@ async def back_from_detail(message: Message, state: FSMContext, bot: Bot):
     data = await state.get_data()
     detail_ids = data.get("detail_message_ids", [])
 
-    # Удаляем все детальные сообщения
     for msg_id in detail_ids:
         try:
             await bot.delete_message(message.chat.id, msg_id)
         except Exception as e:
             logger.warning(f"Не удалось удалить сообщение {msg_id}: {e}")
 
-    # Очищаем сохранённые ID
     await state.update_data(detail_message_ids=[])
     await state.set_state(AdminStates.viewing_assistance_list)
-
-    # Показываем список заявок
     await show_requests_list(message, state, bot)
 
-    # Удаляем сообщение с командой "Назад"
     try:
         await message.delete()
     except Exception as e:
@@ -368,9 +432,7 @@ async def set_status_callback(callback: CallbackQuery, state: FSMContext, bot: B
     req_id = int(req_id_str)
     await requests_service.update_request_status(req_type, req_id, new_status)
     await callback.answer(f"Статус изменён на {new_status}")
-    # Удаляем сообщение с выбором статуса (inline-клавиатуру)
     await callback.message.delete()
-    # Показываем обновлённую заявку
     await show_request_detail(callback, state, req_type, req_id)
 
 
@@ -384,41 +446,44 @@ async def back_to_detail_callback(callback: CallbackQuery, state: FSMContext):
 # ------------------------------------------------------------
 # 8. Добавление комментария
 # ------------------------------------------------------------
-
 @admin_assistance_router.callback_query(F.data.startswith("add_comment:"))
 async def add_comment_callback(callback: CallbackQuery, state: FSMContext):
     _, req_type, req_id_str = callback.data.split(":")
     req_id = int(req_id_str)
-    await state.update_data(
-        comment_request_type=req_type,
-        comment_request_id=req_id
-    )
-    await state.set_state(AdminStates.adding_comment)
-    await callback.message.answer(
+    msg = await callback.message.answer(
         "✏️ Введите текст комментария (или нажмите «Отмена»):",
         reply_markup=get_cancel_keyboard()
     )
+    await state.update_data(
+        comment_request_type=req_type,
+        comment_request_id=req_id,
+        comment_request_message_id=msg.message_id
+    )
+    await state.set_state(AdminStates.adding_comment)
     await callback.answer()
-
-
-from sqlalchemy import select
-from bot.db.tables import users
 
 
 @admin_assistance_router.message(AdminStates.adding_comment)
 async def receive_comment(message: Message, state: FSMContext, bot: Bot):
+    if not message.text or message.text.startswith('/'):
+        await message.answer("❌ Пожалуйста, отправьте **текстовое** сообщение с комментарием.")
+        return
     if message.text == BTN_CANCEL:
-        await state.set_state(AdminStates.viewing_assistance_detail)
-        await message.delete()
-        await message.answer("❌ Отменено.", reply_markup=get_back_keyboard())
         data = await state.get_data()
+        request_msg_id = data.get('comment_request_message_id')
+        if request_msg_id:
+            try:
+                await bot.delete_message(message.chat.id, request_msg_id)
+            except Exception as e:
+                logger.warning(f"Не удалось удалить запрос: {e}")
+        await state.set_state(AdminStates.viewing_assistance_detail)
+        await message.answer("❌ Отменено.", reply_markup=get_back_keyboard())
         req_type = data.get('comment_request_type')
         req_id = data.get('comment_request_id')
         if req_type and req_id:
             await show_request_detail(message, state, req_type, req_id, bot)
         return
 
-    # 1. Получаем внутренний ID администратора по его telegram_id
     async with db.session_factory() as session:
         result = await session.execute(
             select(users.c.id).where(users.c.telegram_id == message.from_user.id)
@@ -431,11 +496,15 @@ async def receive_comment(message: Message, state: FSMContext, bot: Bot):
     data = await state.get_data()
     req_type = data['comment_request_type']
     req_id = data['comment_request_id']
+    request_msg_id = data.get('comment_request_message_id')
 
-    # 2. Передаём admin_db_id (users.id), а не telegram_id
+    if request_msg_id:
+        try:
+            await bot.delete_message(message.chat.id, request_msg_id)
+        except Exception as e:
+            logger.warning(f"Не удалось удалить сообщение с запросом: {e}")
+
     await requests_service.add_comment(req_type, req_id, admin_db_id, message.text)
-
-    await message.delete()
     await message.answer("✅ Комментарий добавлен.")
     await show_request_detail(message, state, req_type, req_id, bot)
 
@@ -491,7 +560,6 @@ async def back_to_list_callback(callback: CallbackQuery, state: FSMContext, bot:
     data = await state.get_data()
     detail_ids = data.get("detail_message_ids", [])
 
-    # Удаляем все детальные сообщения, кроме самого сообщения с кнопкой
     for msg_id in detail_ids:
         if msg_id == callback.message.message_id:
             continue
@@ -500,17 +568,54 @@ async def back_to_list_callback(callback: CallbackQuery, state: FSMContext, bot:
         except Exception as e:
             logger.warning(f"Не удалось удалить сообщение {msg_id}: {e}")
 
-    # Очищаем сохранённые ID
     await state.update_data(detail_message_ids=[])
     await state.set_state(AdminStates.viewing_assistance_list)
-
-    # Показываем список заявок
     await show_requests_list(callback.message, state, bot)
 
-    # Удаляем сообщение с кнопкой
     try:
         await callback.message.delete()
     except Exception as e:
         logger.warning(f"Не удалось удалить сообщение с кнопкой: {e}")
 
     await callback.answer()
+
+@admin_assistance_router.message(
+    AdminStates.choosing_mode,
+    F.text == BTN_ADMIN_SEARCH_REWARD
+)
+async def start_search_reward(message: Message, state: FSMContext):
+    await state.set_state(AdminStates.searching_reward)
+    await message.answer(
+        "💰 Введите ID выплаты (число):",
+        reply_markup=get_cancel_keyboard()
+    )
+
+@admin_assistance_router.message(AdminStates.searching_reward)
+async def process_search_reward_id(message: Message, state: FSMContext, bot: Bot):
+    if message.text == BTN_CANCEL:
+        await state.set_state(AdminStates.choosing_mode)
+        await message.delete()
+        await message.answer(
+            "Главное меню администратора:",
+            reply_markup=get_admin_main_keyboard()
+        )
+        return
+
+    if not message.text.isdigit():
+        await message.answer("❌ Введите целое число.")
+        return
+
+    reward_id = int(message.text)
+    reward = await requests_service.get_reward_by_id(reward_id)
+    if not reward:
+        await message.answer("❌ Выплата с таким ID не найдена.")
+        return
+
+    await state.set_state(AdminStates.viewing_assistance_detail)
+    await show_request_detail(
+        message,
+        state,
+        reward['request_type'],  # 'reward'
+        reward['id'],
+        bot
+    )

@@ -1,10 +1,3 @@
-"""add paid fields to rewards
-
-Revision ID: 5a63607a8ecf
-Revises: 6c302b56ee65
-Create Date: 2026-02-13 05:25:17.605915
-
-"""
 from typing import Sequence, Union
 
 from alembic import op
