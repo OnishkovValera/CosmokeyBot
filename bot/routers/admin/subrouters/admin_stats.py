@@ -64,7 +64,6 @@ async def show_stats(message: Message, state: FSMContext):
 
     await message.answer(
         text,
-        parse_mode="Markdown",
         reply_markup=get_back_keyboard()
     )
 

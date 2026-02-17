@@ -83,7 +83,6 @@ async def show_users_page(message: Message, state: FSMContext, bot: Bot):
 
     sent = await message.answer(
         text,
-        parse_mode="Markdown",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=kb) if kb else None
     )
 
